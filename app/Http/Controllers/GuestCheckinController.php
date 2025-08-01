@@ -96,6 +96,7 @@ class GuestCheckinController extends Controller
                     ], 422);
                 }
 
+                // Time gap between check and booking creation
                 $query = Booking::where('business_id', $business_id)
                     ->where('room_number', $room_number)
                     ->whereDate('booking_start', '<=', \Carbon\Carbon::parse($booking_end)->toDateString())

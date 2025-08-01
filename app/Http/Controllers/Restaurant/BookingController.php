@@ -2,18 +2,20 @@
 
 namespace App\Http\Controllers\Restaurant;
 
-use App\BusinessLocation;
-use App\Contact;
-use App\CustomerGroup;
-use App\Models\GuestRegistration;
-use App\Restaurant\Booking;
-use App\User;
-use App\Utils\Util;
-use App\Utils\RestaurantUtil;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Yajra\DataTables\Facades\DataTables;
 use Illuminate\Support\Facades\Mail;
+
+use Yajra\DataTables\Facades\DataTables;
+
+use App\User;
+use App\Contact;
+use App\Utils\Util;
+use App\CustomerGroup;
+use App\BusinessLocation;
+use App\GuestRegistration;
+use App\Restaurant\Booking;
+use App\Utils\RestaurantUtil;
 
 class BookingController extends Controller
 {
@@ -56,41 +58,39 @@ class BookingController extends Controller
         $correspondents = User::forDropdown($business_id, false);
         $types = Contact::getContactTypes();
         $customer_groups = CustomerGroup::forDropdown($business_id);
-  $rooms = [];
+        $rooms = [];
 
-$roomDefinitions = [
-    101 => ['type' => 'Double Standard', 'price' => 5000],
-    102 => ['type' => 'Double Standard', 'price' => 5000],
-    103 => ['type' => 'Double Standard', 'price' => 5000],
-    104 => ['type' => 'Double Standard', 'price' => 5000],
+        $roomDefinitions = [
+            101 => ['type' => 'Double Standard', 'price' => 5000],
+            102 => ['type' => 'Double Standard', 'price' => 5000],
+            103 => ['type' => 'Double Standard', 'price' => 5000],
+            104 => ['type' => 'Double Standard', 'price' => 5000],
 
-    105 => ['type' => 'Single', 'price' => 4000],
-    106 => ['type' => 'Single', 'price' => 4000],
-    107 => ['type' => 'Single', 'price' => 4000],
-    108 => ['type' => 'Single', 'price' => 4000],
+            105 => ['type' => 'Single', 'price' => 4000],
+            106 => ['type' => 'Single', 'price' => 4000],
+            107 => ['type' => 'Single', 'price' => 4000],
+            108 => ['type' => 'Single', 'price' => 4000],
 
-    201 => ['type' => 'Double Standard', 'price' => 5000],
-    202 => ['type' => 'Double Standard', 'price' => 5000],
-    203 => ['type' => 'Double Standard', 'price' => 5000],
-    204 => ['type' => 'Double Standard', 'price' => 5000],
+            201 => ['type' => 'Double Standard', 'price' => 5000],
+            202 => ['type' => 'Double Standard', 'price' => 5000],
+            203 => ['type' => 'Double Standard', 'price' => 5000],
+            204 => ['type' => 'Double Standard', 'price' => 5000],
 
-    205 => ['type' => 'Single', 'price' => 4000],
-    206 => ['type' => 'Single', 'price' => 4000],
-    207 => ['type' => 'Single', 'price' => 4000],
-    208 => ['type' => 'Single', 'price' => 4000],
+            205 => ['type' => 'Single', 'price' => 4000],
+            206 => ['type' => 'Single', 'price' => 4000],
+            207 => ['type' => 'Single', 'price' => 4000],
+            208 => ['type' => 'Single', 'price' => 4000],
 
-    209 => ['type' => 'Deluxe', 'price' => 7000],
-    210 => ['type' => 'Executive', 'price' => 12000],
-    211 => ['type' => 'Executive', 'price' => 12000],
-    212 => ['type' => 'Deluxe', 'price' => 7000],
-];
+            209 => ['type' => 'Deluxe', 'price' => 7000],
+            210 => ['type' => 'Executive', 'price' => 12000],
+            211 => ['type' => 'Executive', 'price' => 12000],
+            212 => ['type' => 'Deluxe', 'price' => 7000],
+        ];
 
-foreach ($roomDefinitions as $roomNumber => $details) {
-    $label = 'Room ' . $roomNumber . ' - ' . $details['type'] . ' - KES ' . number_format($details['price']);
-    $rooms[$roomNumber] = $label;
-}
-
-
+        foreach ($roomDefinitions as $roomNumber => $details) {
+            $label = 'Room ' . $roomNumber . ' - ' . $details['type'] . ' - KES ' . number_format($details['price']);
+            $rooms[$roomNumber] = $label;
+        }
 
         return view('restaurant.booking.index', compact('business_locations', 'customers', 'correspondents', 'types', 'customer_groups', 'rooms'));
     }
@@ -117,10 +117,11 @@ foreach ($roomDefinitions as $roomNumber => $details) {
                 //                     $q->whereBetween('booking_start', $date_range)
                 //                       ->orWhereBetween('booking_end', $date_range);
                 //                 });
-     $query = Booking::where('business_id', $business_id)
-    ->where('room_number', $input['room_number'])
-    ->whereDate('booking_start', '<=', \Carbon\Carbon::parse($booking_end)->toDateString())
-    ->whereDate('booking_end', '>=', \Carbon\Carbon::parse($booking_start)->toDateString());
+
+                $query = Booking::where('business_id', $business_id)
+                    ->where('room_number', $input['room_number'])
+                    ->whereDate('booking_start', '<=', \Carbon\Carbon::parse($booking_end)->toDateString())
+                    ->whereDate('booking_end', '>=', \Carbon\Carbon::parse($booking_start)->toDateString());
 
                 if (isset($input['room_number'])) {
                     $query->where('room_number', $input['room_number']);
@@ -161,8 +162,8 @@ foreach ($roomDefinitions as $roomNumber => $details) {
                                             </div>
                                         </div>';
                                     $message->to($registration->email)
-                                            ->subject('Booking Confirmation')
-                                            ->setBody($html, 'text/html');
+                                        ->subject('Booking Confirmation')
+                                        ->setBody($html, 'text/html');
                                 });
                             }
                         }
@@ -176,7 +177,7 @@ foreach ($roomDefinitions as $roomNumber => $details) {
                     }
                 } else {
                     $time_range = $this->commonUtil->format_date($existing_booking->booking_start, true) . ' ~ ' .
-                                  $this->commonUtil->format_date($existing_booking->booking_end, true);
+                        $this->commonUtil->format_date($existing_booking->booking_end, true);
                     $output = ['success' => 0, 'msg' => trans("restaurant.booking_not_available", [
                         'customer_name' => $existing_booking->customer->name,
                         'booking_time_range' => $time_range
@@ -197,9 +198,9 @@ foreach ($roomDefinitions as $roomNumber => $details) {
         if (request()->ajax()) {
             $business_id = request()->session()->get('user.business_id');
             $booking = Booking::where('business_id', $business_id)
-                            ->where('id', $id)
-                            ->with(['table', 'customer', 'correspondent', 'waiter', 'location'])
-                            ->first();
+                ->where('id', $id)
+                ->with(['table', 'customer', 'correspondent', 'waiter', 'location'])
+                ->first();
             if (!empty($booking)) {
                 $booking_start = $this->commonUtil->format_date($booking->booking_start, true);
                 $booking_end = $this->commonUtil->format_date($booking->booking_end, true);
@@ -223,7 +224,7 @@ foreach ($roomDefinitions as $roomNumber => $details) {
         try {
             $business_id = $request->session()->get('user.business_id');
             $booking = Booking::where('business_id', $business_id)
-                            ->find($id);
+                ->find($id);
             if (!empty($booking)) {
                 $booking->booking_status = $request->booking_status;
                 $booking->save();
@@ -245,8 +246,8 @@ foreach ($roomDefinitions as $roomNumber => $details) {
         try {
             $business_id = request()->session()->get('user.business_id');
             Booking::where('business_id', $business_id)
-                   ->where('id', $id)
-                   ->delete();
+                ->where('id', $id)
+                ->delete();
             $output = ['success' => 1, 'msg' => trans("lang_v1.deleted_success")];
         } catch (\Exception $e) {
             \Log::emergency("File:" . $e->getFile() . "Line:" . $e->getLine() . "Message:" . $e->getMessage());
@@ -266,9 +267,9 @@ foreach ($roomDefinitions as $roomNumber => $details) {
             $user_id = request()->session()->get('user.id');
             $today = \Carbon::now()->format('Y-m-d');
             $query = Booking::where('business_id', $business_id)
-                           ->where('booking_status', 'booked')
-                           ->whereDate('booking_start', $today)
-                           ->with(['table', 'customer', 'correspondent', 'waiter', 'location']);
+                ->where('booking_status', 'booked')
+                ->whereDate('booking_start', $today)
+                ->with(['table', 'customer', 'correspondent', 'waiter', 'location']);
 
             if (!empty(request()->location_id)) {
                 $query->where('location_id', request()->location_id);
@@ -277,8 +278,8 @@ foreach ($roomDefinitions as $roomNumber => $details) {
             if (!auth()->user()->hasPermissionTo('crud_all_bookings') && !$this->commonUtil->is_admin(auth()->user(), $business_id)) {
                 $query->where(function ($query) use ($user_id) {
                     $query->where('created_by', $user_id)
-                          ->orWhere('correspondent_id', $user_id)
-                          ->orWhere('waiter_id', $user_id);
+                        ->orWhere('correspondent_id', $user_id)
+                        ->orWhere('waiter_id', $user_id);
                 });
             }
 

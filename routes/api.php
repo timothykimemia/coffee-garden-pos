@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\GuestCheckinController;
 use App\Http\Controllers\OnlineBookingController;
 use App\Http\Controllers\Restaurant\BookingController;
-use App\Http\Controllers\Restaurant\GuestRegistrationController; // Updated namespace
+use App\Http\Controllers\Restaurant\GuestRegistrationController;
 
 
 // ✅ Public access – Check-in route
@@ -16,17 +16,12 @@ Route::post('/guest-checkins', [GuestCheckinController::class, 'store']);
 //online booking routes
 Route::post('/online-bookings', [OnlineBookingController::class, 'store']);
 
-
 // ✅ Guest Registration – public for initial booking
 Route::post('/guest-registrations', [GuestRegistrationController::class, 'store']);
 Route::get('/guest-registrations/available-rooms', [GuestRegistrationController::class, 'getAvailableRooms']);
 
-Route::post('/bookings', [App\Http\Controllers\Restaurant\BookingController::class, 'store'])->middleware('auth:sanctum')->name('bookings.store');
-//Route::get('/bookings/guest-checkins', [App\Http\Controllers\Restaurant\BookingController::class, 'getGuestCheckins'])->middleware('auth:sanctum')->name('bookings.guest_checkins');
-
-
-
-
+Route::post('/bookings', [BookingController::class, 'store'])->middleware('auth:sanctum')->name('bookings.store');
+//Route::get('/bookings/guest-checkins', [BookingController::class, 'getGuestCheckins'])->middleware('auth:sanctum')->name('bookings.guest_checkins');
 
 // ✅ Email sending – can stay public with rate limiting
 Route::post('/send-email', [GuestRegistrationController::class, 'sendEmail'])->middleware('throttle:60,1');

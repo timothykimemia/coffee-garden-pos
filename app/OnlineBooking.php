@@ -1,15 +1,11 @@
 <?php
 
 namespace App;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 use Illuminate\Database\Eloquent\Model;
 
 class OnlineBooking extends Model
 {
-    //
-
-
     protected $fillable = [
         'room_slug',
         'check_in',
