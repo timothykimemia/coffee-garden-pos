@@ -1,8 +1,9 @@
 <?php
 
-namespace App\Models;
+namespace App;
 
 use Illuminate\Database\Eloquent\Model;
+
 use App\Restaurant\Booking;
 
 class GuestCheckin extends Model

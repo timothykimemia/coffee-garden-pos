@@ -75,8 +75,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/user/update-password', 'UserController@updatePassword')->name('user.updatePassword');
 
     Route::resource('brands', 'BrandController');
-  //
-  //   Route::resource('payment-account', 'PaymentAccountController');
+
+    //   Route::resource('payment-account', 'PaymentAccountController');
     Route::resource('tax-rates', 'TaxRateController');
     Route::resource('units', 'UnitController');
 
@@ -337,44 +337,24 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/bookings/{id}', [BookingController::class, 'show'])->name('bookings.show');
     Route::put('/bookings/{id}', [BookingController::class, 'update'])->name('bookings.update');
     Route::delete('/bookings/{id}', [BookingController::class, 'destroy'])->name('bookings.destroy');
-   // Route::get('/bookings/get-todays-bookings', [BookingController::class, 'getTodaysBookings']);
 
-// Route::get('/bookings/get-todays-bookings', [BookingController::class, 'getTodaysBookings'])
-//     ->name('get-todays-bookings');
+    Route::get('/bookings/guest-checkins', [BookingController::class, 'getGuestCheckins'])->name('bookings.get_guest_checkins');
+    Route::get('/bookings/guest-checkins/{id}', [BookingController::class, 'showGuestCheckin'])->name('bookings.show_guest_checkin');
+    Route::get('/bookings/online-count', [BookingController::class, 'getOnlineBookingsCount'])->name('bookings.online_count');
+    Route::post('/bookings/convert-online-booking/{id}', [BookingController::class, 'convertOnlineBookingToBooking'])->name('bookings.convert_online');
+    Route::post('/bookings/process-online-bookings', [BookingController::class, 'processOnlineBookings'])->name('bookings.process_online');
 
-//     Route::get('/bookings/get-guest-registrations', [BookingController::class, 'getGuestRegistrations']);
+    Route::get('/bookings/get-todays-bookings', [BookingController::class, 'getTodaysBookings'])->name('get-todays-bookings');
 
+    Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
+    Route::get('/bookings/guest-checkins/{id}', [BookingController::class, 'showGuestCheckin'])->name('bookings.show_guest_checkin');
 
-Route::get('/bookings/get-todays-bookings', [BookingController::class, 'getTodaysBookings'])->name('get-todays-bookings');
+    // Guest Check-in routes
+    Route::post('/guest-checkins', 'GuestCheckinController@store')->name('guest-checkins.store');
+    Route::get('/guest-checkins/{id}', 'BookingController@showGuestCheckin')->name('guest-checkins.show');
+    Route::get('/bookings/guest-checkins', 'BookingController@getGuestCheckins')->name('bookings.guest-checkins');
 
-Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
-Route::get('/bookings/guest-checkins/{id}', [BookingController::class, 'showGuestCheckin'])->name('bookings.show_guest_checkin');
-
-
-// Route::post('/guest-checkins', [GuestCheckinController::class, 'store'])->name('guest_checkins.store');
-// Route::post('/bookings', [BookingController::class, 'store'])->middleware('auth:sanctum')->name('bookings.store');
-// Route::get('/bookings/guest-checkins', [BookingController::class, 'getGuestCheckins'])->middleware('auth:sanctum')->name('bookings.guest_checkins');
-// Route::get('/bookings/get-todays-bookings', [BookingController::class, 'getTodaysBookings'])->middleware('auth:sanctum')->name('bookings.get_todays_bookings');
-
-
-
-// Guest Check-in routes
-Route::post('/guest-checkins', 'GuestCheckinController@store')->name('guest-checkins.store');
-Route::get('/guest-checkins/{id}', 'BookingController@showGuestCheckin')->name('guest-checkins.show');
-Route::get('/bookings/guest-checkins', 'BookingController@getGuestCheckins')->name('bookings.guest-checkins');
-
-
-
-
-//Route::get('/guest-checkins', [GuestCheckinController::class, 'index'])->name('guest-checkins.index');
-//Route::post('/guest-checkins/assign-room', [GuestCheckinController::class, 'assignRoom'])->name('guest-checkins.assign-room');
-//Route::get('/guest-checkins/{id}', [GuestCheckinController::class, 'show'])->name('guest-checkins.show');
-// routes/web.php
-Route::post('/guest-checkins', [GuestCheckinController::class, 'store']);
-
-
-
-
+    Route::post('/guest-checkins', [GuestCheckinController::class, 'store']);
 
     Route::prefix('guest-registrations')->group(function () {
         Route::get('/', [GuestRegistrationController::class, 'index'])->name('guest-registrations.index');
@@ -435,7 +415,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone'])
             })
             ->with(['customer', 'location'])
             ->get();
-        
+
         $events = [];
         foreach ($bookings as $booking) {
             $color = '#f39c12'; // default yellow
@@ -452,8 +432,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone'])
             }
             $events[] = [
                 'id' => $booking->id,
-                'title' => ($booking->customer ? $booking->customer->name : 'Guest') . 
-                          ($booking->room_number ? ' - Room ' . $booking->room_number : ''),
+                'title' => ($booking->customer ? $booking->customer->name : 'Guest') . ($booking->room_number ? ' - Room ' . $booking->room_number : ''),
                 'start' => $booking->booking_start,
                 'end' => $booking->booking_end,
                 'color' => $color,
@@ -479,7 +458,7 @@ Route::prefix('api')->group(function () {
 // Ecom API Routes
 Route::middleware(['EcomApi'])->prefix('api/ecom')->group(function () {
     Route::get('products/{id?}', 'ProductController@getProductsApi');
-   // Route::get('categories', 'CategoryController@getCategoriesApi');
+    // Route::get('categories', 'CategoryController@getCategoriesApi');
     Route::get('brands', 'BrandController@getBrandsApi');
     Route::post('customers', 'ContactController@postCustomersApi');
     Route::get('settings', 'BusinessController@getEcomSettings');

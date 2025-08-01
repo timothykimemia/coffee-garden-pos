@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
 use App\Utils\Util;
+use App\GuestCheckin;
 use App\Restaurant\Booking;
-use App\Models\GuestCheckin;
 
 class GuestCheckinController extends Controller
 {

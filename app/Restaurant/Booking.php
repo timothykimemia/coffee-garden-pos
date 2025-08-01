@@ -3,9 +3,10 @@
 namespace App\Restaurant;
 
 use Illuminate\Database\Eloquent\Model;
-use App\GuestCheckin;
-use App\Contact;
+
 use App\User;
+use App\Contact;
+use App\GuestCheckin;
 use App\BusinessLocation;
 
 class Booking extends Model
@@ -79,12 +80,11 @@ class Booking extends Model
     }
 
     /**
-     * Relationship with Table (if you have a tables model)
+     * Relationship with Table (restaurant tables model)
      */
     public function table()
     {
-        // Adjust this based on your table model
-        return $this->belongsTo(\App\RestaurantTable::class, 'table_id');
+        return $this->belongsTo(ResTable::class, 'table_id');
     }
 
     /**

@@ -5,7 +5,6 @@ namespace App;
 use Illuminate\Database\Eloquent\Model;
 
 use App\Restaurant\Booking;
-use App\Models\GuestCheckin;
 
 class GuestRegistration extends Model
 {

@@ -11,8 +11,11 @@ use Yajra\DataTables\Facades\DataTables;
 use App\User;
 use App\Contact;
 use App\Utils\Util;
+use App\GuestCheckin;
 use App\CustomerGroup;
+use App\OnlineBooking;
 use App\BusinessLocation;
+use App\Utils\ContactUtil;
 use App\GuestRegistration;
 use App\Restaurant\Booking;
 use App\Utils\RestaurantUtil;
@@ -256,6 +259,21 @@ class BookingController extends Controller
         return $output;
     }
 
+    /**
+     * Get count of pending online bookings
+     */
+    public function getOnlineBookingsCount()
+    {
+        $count = OnlineBooking::whereNull('converted_booking_id')
+            ->where('status', '!=', 'converted')
+            ->count();
+
+        return response()->json(['count' => $count]);
+    }
+
+    /**
+     * Enhanced getTodaysBookings to include online bookings
+     */
     public function getTodaysBookings()
     {
         if (!auth()->user()->can('crud_all_bookings') && !auth()->user()->can('crud_own_bookings')) {
@@ -266,47 +284,396 @@ class BookingController extends Controller
             $business_id = request()->session()->get('user.business_id');
             $user_id = request()->session()->get('user.id');
             $today = \Carbon::now()->format('Y-m-d');
-            $query = Booking::where('business_id', $business_id)
+
+            // Get regular bookings
+            $regularBookingsQuery = Booking::where('business_id', $business_id)
                 ->where('booking_status', 'booked')
                 ->whereDate('booking_start', $today)
-                ->with(['table', 'customer', 'correspondent', 'waiter', 'location']);
+                ->with(['table', 'customer', 'correspondent', 'waiter', 'location', 'guestCheckin']);
 
             if (!empty(request()->location_id)) {
-                $query->where('location_id', request()->location_id);
+                $regularBookingsQuery->where('location_id', request()->location_id);
             }
 
-            if (!auth()->user()->hasPermissionTo('crud_all_bookings') && !$this->commonUtil->is_admin(auth()->user(), $business_id)) {
-                $query->where(function ($query) use ($user_id) {
+            if (!auth()->user()->hasPermissionTo('crud_all_bookings') && !$this->restUtil->is_admin(auth()->user(), $business_id)) {
+                $regularBookingsQuery->where(function ($query) use ($user_id) {
                     $query->where('created_by', $user_id)
                         ->orWhere('correspondent_id', $user_id)
                         ->orWhere('waiter_id', $user_id);
                 });
             }
 
-            return Datatables::of($query)
-                ->editColumn('table', function ($row) {
-                    return !empty($row->table->name) ? $row->table->name : ($row->room_number ?? '--');
-                })
-                ->editColumn('customer', function ($row) {
-                    return !empty($row->customer->name) ? $row->customer->name : '--';
-                })
-                ->editColumn('correspondent', function ($row) {
-                    return !empty($row->correspondent->user_full_name) ? $row->correspondent->user_full_name : '--';
-                })
-                ->editColumn('waiter', function ($row) {
-                    return !empty($row->waiter->user_full_name) ? $row->waiter->user_full_name : '--';
-                })
-                ->editColumn('location', function ($row) {
-                    return !empty($row->location->name) ? $row->location->name : '--';
-                })
-                ->editColumn('booking_start', function ($row) {
-                    return $this->commonUtil->format_date($row->booking_start, true);
-                })
-                ->editColumn('booking_end', function ($row) {
-                    return $this->commonUtil->format_date($row->booking_end, true);
-                })
-                ->removeColumn('id')
+            $regularBookings = $regularBookingsQuery->get();
+
+            // Get today's online bookings that haven't been converted
+            $onlineBookings = OnlineBooking::whereDate('check_in', $today)
+                ->whereNull('converted_booking_id') // Only unconverted ones
+                ->get();
+
+            // Combine data for DataTables
+            $allBookings = [];
+
+            // Add regular bookings
+            foreach ($regularBookings as $booking) {
+                $guestName = 'Unknown Guest';
+                $contactInfo = 'N/A';
+                $guestInfo = 'N/A';
+
+                if ($booking->guestCheckin) {
+                    $guestName = $booking->guestCheckin->surname . ' ' . $booking->guestCheckin->name;
+                    $contactInfo = $booking->guestCheckin->email;
+                    if ($booking->guestCheckin->phone) {
+                        $contactInfo = $contactInfo ? $contactInfo . ' | ' . $booking->guestCheckin->phone : $booking->guestCheckin->phone;
+                    }
+                    $guestInfo = 'Guest Check-in | ' . $booking->guestCheckin->gender . ' | ' . $booking->guestCheckin->nationality;
+                } elseif ($booking->customer) {
+                    $guestName = $booking->customer->name;
+                    $contactInfo = $booking->customer->email ?? $booking->customer->mobile ?? 'N/A';
+                    $guestInfo = 'Regular Customer';
+                }
+
+                $allBookings[] = [
+                    'id' => $booking->id,
+                    'customer' => $guestName,
+                    'contact_info' => $contactInfo,
+                    'guest_info' => $guestInfo,
+                    'room_details' => $booking->room_number ? 'Room ' . $booking->room_number . ' - ' . $booking->room_type : 'N/A',
+                    'booking_start' => $this->commonUtil->format_date($booking->booking_start, true),
+                    'booking_end' => $this->commonUtil->format_date($booking->booking_end, true),
+                    'table' => $booking->table ? $booking->table->name : ($booking->room_number ?? '--'),
+                    'location' => $booking->location ? $booking->location->name : '--',
+                    'waiter' => $booking->waiter ? $booking->waiter->user_full_name : '--',
+                    'price' => 'KES ' . number_format($booking->price, 2),
+                    'status' => '<span class="label ' . $booking->status_badge_class . '">' . ucfirst($booking->booking_status) . '</span>',
+                    'action' => '<button class="btn btn-xs btn-info btn-modal" data-href="' . route('bookings.show', $booking->id) . '" data-container=".view_modal"><i class="fa fa-eye"></i></button>',
+                    'type' => 'regular'
+                ];
+            }
+
+            // Add online bookings
+            foreach ($onlineBookings as $onlineBooking) {
+                $allBookings[] = [
+                    'id' => 'online_' . $onlineBooking->id,
+                    'customer' => $onlineBooking->name,
+                    'contact_info' => ($onlineBooking->email ?? '') . ($onlineBooking->email && $onlineBooking->phone_number ? ' | ' : '') . ($onlineBooking->phone_number ?? ''),
+                    'guest_info' => 'Online Booking | ' . ucfirst($onlineBooking->gender ?? 'N/A'),
+                    'room_details' => 'Room Type: ' . str_replace('-', ' ', ucwords($onlineBooking->room_slug)),
+                    'booking_start' => \Carbon::parse($onlineBooking->check_in)->format('Y-m-d H:i:s'),
+                    'booking_end' => \Carbon::parse($onlineBooking->check_out)->format('Y-m-d H:i:s'),
+                    'table' => 'Online Booking',
+                    'location' => 'Online',
+                    'waiter' => '--',
+                    'price' => 'KES ' . number_format($onlineBooking->total_price, 2),
+                    'status' => '<span class="label label-info">Online Booking</span>',
+                    'action' => '<button class="btn btn-xs btn-success convert-online-booking" data-id="' . $onlineBooking->id . '"><i class="fa fa-exchange"></i> Convert</button>',
+                    'type' => 'online'
+                ];
+            }
+
+            return Datatables::of(collect($allBookings))
+                ->rawColumns(['status', 'action'])
                 ->make(true);
+        }
+    }
+
+    /**
+     * Get guest check-ins for DataTables
+     */
+    public function getGuestCheckins()
+    {
+        if (!auth()->user()->can('crud_all_bookings') && !auth()->user()->can('crud_own_bookings')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        if (request()->ajax()) {
+            $business_id = request()->session()->get('user.business_id');
+
+            $query = GuestCheckin::where('business_id', $business_id)
+                ->with(['bookings'])
+                ->orderBy('created_at', 'desc');
+
+            if (!empty(request()->location_id)) {
+                // If you need location filtering, you might need to join with bookings table
+                $query->whereHas('bookings', function($q) {
+                    $q->where('location_id', request()->location_id);
+                });
+            }
+
+            return Datatables::of($query)
+                ->editColumn('full_name', function ($row) {
+                    return $row->surname . ' ' . $row->name;
+                })
+                ->editColumn('staff_acknowledged', function ($row) {
+                    return $row->staff_acknowledged ?
+                        '<span class="label label-success">Yes</span>' :
+                        '<span class="label label-warning">No</span>';
+                })
+                ->editColumn('guest_acknowledged', function ($row) {
+                    return $row->guest_acknowledged ?
+                        '<span class="label label-success">Yes</span>' :
+                        '<span class="label label-warning">No</span>';
+                })
+                ->editColumn('created_at', function ($row) {
+                    return $row->created_at->format('Y-m-d H:i:s');
+                })
+                ->addColumn('action', function ($row) {
+                    return '<button type="button" class="btn btn-xs btn-info view-guest-details" data-id="' . $row->id . '">
+                            <i class="fa fa-eye"></i> View
+                        </button>';
+                })
+                ->rawColumns(['staff_acknowledged', 'guest_acknowledged', 'action'])
+                ->make(true);
+        }
+    }
+
+    /**
+     * Show guest check-in details
+     */
+    public function showGuestCheckin($id)
+    {
+        if (request()->ajax()) {
+            $business_id = request()->session()->get('user.business_id');
+
+            $guestCheckin = GuestCheckin::where('business_id', $business_id)
+                ->where('id', $id)
+                ->with(['bookings'])
+                ->first();
+
+            if (!$guestCheckin) {
+                return response()->json(['error' => 'Guest check-in not found'], 404);
+            }
+
+            return response()->json([
+                'id' => $guestCheckin->id,
+                'full_name' => $guestCheckin->full_name,
+                'surname' => $guestCheckin->surname,
+                'name' => $guestCheckin->name,
+                'email' => $guestCheckin->email,
+                'phone' => $guestCheckin->phone,
+                'gender' => $guestCheckin->gender,
+                'nationality' => $guestCheckin->nationality,
+                'id_type' => $guestCheckin->id_type,
+                'id_number' => $guestCheckin->id_number,
+                'passport_no' => $guestCheckin->passport_no,
+                'stay_purpose' => $guestCheckin->stay_purpose,
+                'payment_method' => $guestCheckin->payment_method,
+                'company' => $guestCheckin->company,
+                'remarks' => $guestCheckin->remarks,
+                'staff_acknowledged' => $guestCheckin->staff_acknowledged,
+                'guest_acknowledged' => $guestCheckin->guest_acknowledged,
+                'created_at' => $guestCheckin->created_at->format('Y-m-d H:i:s'),
+                'booking_status' => $guestCheckin->booking_status ?? 'no_booking',
+                'has_bookings' => $guestCheckin->bookings->count() > 0
+            ]);
+        }
+    }
+
+    /**
+     * Convert OnlineBooking to regular Booking
+     */
+    public function convertOnlineBookingToBooking($onlineBookingId)
+    {
+        if (!auth()->user()->can('crud_all_bookings') && !auth()->user()->can('crud_own_bookings')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $onlineBooking = OnlineBooking::findOrFail($onlineBookingId);
+            $business_id = request()->session()->get('user.business_id');
+            $user_id = request()->session()->get('user.id');
+
+            // Create or find customer contact
+            $customer = $this->createCustomerFromOnlineBooking($onlineBooking, $business_id);
+
+            // Convert room_slug to room_number
+            $roomNumber = $this->extractRoomNumberFromSlug($onlineBooking->room_slug);
+
+            // Check room availability
+            $booking_start = \Carbon::parse($onlineBooking->check_in)->startOfDay();
+            $booking_end = \Carbon::parse($onlineBooking->check_out)->endOfDay();
+
+            $existingBooking = Booking::where('business_id', $business_id)
+                ->where('room_number', $roomNumber)
+                ->where(function($query) use ($booking_start, $booking_end) {
+                    $query->whereBetween('booking_start', [$booking_start, $booking_end])
+                        ->orWhereBetween('booking_end', [$booking_start, $booking_end])
+                        ->orWhere(function($q) use ($booking_start, $booking_end) {
+                            $q->where('booking_start', '<=', $booking_start)
+                                ->where('booking_end', '>=', $booking_end);
+                        });
+                })
+                ->where('booking_status', '!=', 'cancelled')
+                ->first();
+
+            if ($existingBooking) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Room is not available for the selected dates.'
+                ]);
+            }
+
+            // Create regular booking
+            $booking = Booking::create([
+                'business_id' => $business_id,
+                'location_id' => 1, // Default location
+                'customer_id' => $customer->id,
+                'booking_start' => $booking_start,
+                'booking_end' => $booking_end,
+                'created_by' => $user_id,
+                'booking_status' => 'booked',
+                'room_number' => $roomNumber,
+                'price' => $onlineBooking->total_price,
+                'adults' => $onlineBooking->adults,
+                'rooms' => $onlineBooking->rooms,
+                'is_double_occupancy' => $onlineBooking->is_double_occupancy,
+                'number_of_days' => $onlineBooking->number_of_days,
+                'price_per_room' => $onlineBooking->price_per_room,
+                'booking_note' => 'Converted from online booking #' . $onlineBooking->id
+            ]);
+
+            // Mark online booking as converted
+            $onlineBooking->update([
+                'converted_booking_id' => $booking->id,
+                'status' => 'converted'
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Online booking converted successfully.',
+                'booking_id' => $booking->id
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Error converting online booking: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error converting booking: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Create customer contact from online booking
+     */
+    private function createCustomerFromOnlineBooking($onlineBooking, $business_id)
+    {
+        // Check if customer already exists by email or phone
+        $existingCustomer = Contact::where('business_id', $business_id)
+            ->where(function($query) use ($onlineBooking) {
+                if ($onlineBooking->email) {
+                    $query->where('email', $onlineBooking->email);
+                }
+                if ($onlineBooking->phone_number) {
+                    $query->orWhere('mobile', $onlineBooking->phone_number);
+                }
+            })
+            ->first();
+
+        if ($existingCustomer) {
+            return $existingCustomer;
+        }
+
+        // Create a new customer using ContactUtil
+        $contactUtil = new ContactUtil();
+
+        $contactData = [
+            'business_id' => $business_id,
+            'type' => 'customer',
+            'name' => $onlineBooking->name,
+            'email' => $onlineBooking->email,
+            'mobile' => $onlineBooking->phone_number,
+            'contact_status' => 'active',
+            'created_by' => auth()->id() ?? 1
+        ];
+
+        $result = $contactUtil->createNewContact($contactData);
+
+        return $result['data'];
+    }
+
+    /**
+     * Extract room number from room slug
+     */
+    private function extractRoomNumberFromSlug($roomSlug)
+    {
+        // Map room slugs to room numbers based on your room definitions
+        $roomMappings = [
+            'executive-rooms' => 210, // Default to first executive room
+            'deluxe-rooms' => 209,    // Default to first deluxe room
+            'double-standard' => 101, // Default to first double standard
+            'single' => 105,          // Default to first single
+        ];
+
+        // If direct mapping exists
+        if (isset($roomMappings[$roomSlug])) {
+            return $roomMappings[$roomSlug];
+        }
+
+        // Try to extract number from slug if it contains room number
+        if (preg_match('/(\d+)/', $roomSlug, $matches)) {
+            return (int)$matches[1];
+        }
+
+        // Default fallback
+        return 101;
+    }
+
+    /**
+     * Auto-process pending online bookings
+     */
+    public function processOnlineBookings()
+    {
+        if (!auth()->user()->can('crud_all_bookings') && !auth()->user()->can('crud_own_bookings')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            // Get unprocessed online bookings
+            $onlineBookings = OnlineBooking::whereNull('converted_booking_id')
+                ->where('status', '!=', 'converted')
+                ->get();
+
+            $convertedCount = 0;
+            $errors = [];
+
+            foreach ($onlineBookings as $onlineBooking) {
+                try {
+                    $response = $this->convertOnlineBookingToBooking($onlineBooking->id);
+                    $responseData = $response->getData(true);
+
+                    if ($responseData['success']) {
+                        $convertedCount++;
+                    } else {
+                        $errors[] = "Booking #{$onlineBooking->id}: " . $responseData['message'];
+                    }
+
+                } catch (\Exception $e) {
+                    $errors[] = "Booking #{$onlineBooking->id}: " . $e->getMessage();
+                    \Log::error("Failed to convert online booking {$onlineBooking->id}: " . $e->getMessage());
+                    continue;
+                }
+            }
+
+            $message = "Converted {$convertedCount} online bookings successfully.";
+            if (!empty($errors)) {
+                $message .= " Errors: " . implode(', ', array_slice($errors, 0, 3));
+                if (count($errors) > 3) {
+                    $message .= "... and " . (count($errors) - 3) . " more.";
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'converted_count' => $convertedCount,
+                'error_count' => count($errors)
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error processing online bookings: ' . $e->getMessage()
+            ]);
         }
     }
 }
