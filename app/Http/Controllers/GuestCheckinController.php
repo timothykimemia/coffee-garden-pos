@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
+use App\Utils\Util;
 use App\Restaurant\Booking;
 use App\Models\GuestCheckin;
 
@@ -13,6 +14,35 @@ class GuestCheckinController extends Controller
 {
     protected $commonUtil;
     protected $roomDefinitions;
+
+    public function __construct()
+    {
+        $this->commonUtil = new Util();
+
+        // Define room mappings
+        $this->roomDefinitions = [
+            101 => ['type' => 'Double Standard'],
+            102 => ['type' => 'Double Standard'],
+            103 => ['type' => 'Double Standard'],
+            104 => ['type' => 'Double Standard'],
+            105 => ['type' => 'Single'],
+            106 => ['type' => 'Single'],
+            107 => ['type' => 'Single'],
+            108 => ['type' => 'Single'],
+            201 => ['type' => 'Double Standard'],
+            202 => ['type' => 'Double Standard'],
+            203 => ['type' => 'Double Standard'],
+            204 => ['type' => 'Double Standard'],
+            205 => ['type' => 'Single'],
+            206 => ['type' => 'Single'],
+            207 => ['type' => 'Single'],
+            208 => ['type' => 'Single'],
+            209 => ['type' => 'Deluxe'],
+            210 => ['type' => 'Executive'],
+            211 => ['type' => 'Executive'],
+            212 => ['type' => 'Deluxe'],
+        ];
+    }
 
     public function store(Request $request)
     {
