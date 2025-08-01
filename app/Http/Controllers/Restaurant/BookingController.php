@@ -29,6 +29,16 @@ class BookingController extends Controller
     {
         $this->commonUtil = $commonUtil;
         $this->restUtil = $restUtil;
+
+        $this->middleware(function ($request, $next) {
+            if (auth()->check() && !session()->has('user.business_id')) {
+                session([
+                    'user.business_id' => auth()->user()->business_id,
+                    'user.id' => auth()->user()->id,
+                ]);
+            }
+            return $next($request);
+        });
     }
 
     public function index()
@@ -51,9 +61,7 @@ class BookingController extends Controller
                 'business_id' => $business_id
             ];
 
-            $events = $this->restUtil->getBookingsForCalendar($filters);
-
-            return $events;
+            return $this->restUtil->getBookingsForCalendar($filters);
         }
 
         $business_locations = BusinessLocation::forDropdown($business_id);
@@ -276,9 +284,9 @@ class BookingController extends Controller
      */
     public function getTodaysBookings()
     {
-        if (!auth()->user()->can('crud_all_bookings') && !auth()->user()->can('crud_own_bookings')) {
-            abort(403, 'Unauthorized action.');
-        }
+//        if (!auth()->user()->can('crud_all_bookings') && !auth()->user()->can('crud_own_bookings')) {
+//            abort(403, 'Unauthorized action.');
+//        }
 
         if (request()->ajax()) {
             $business_id = request()->session()->get('user.business_id');
@@ -370,7 +378,67 @@ class BookingController extends Controller
                 ];
             }
 
-            return Datatables::of(collect($allBookings))
+            return DataTables::of(collect($allBookings))
+                ->addColumn('customer', function ($row) {
+                    if ($row->guestCheckin) {
+                        return $row->guestCheckin->surname . ' ' . $row->guestCheckin->name;
+                    }
+                    if ($row->customer) {
+                        return $row->customer->name;
+                    }
+                    return 'Unknown Guest';
+                })
+                ->addColumn('contact_info', function ($row) {
+                    if ($row->guestCheckin) {
+                        $contact = [];
+                        if ($row->guestCheckin->email) $contact[] = $row->guestCheckin->email;
+                        if ($row->guestCheckin->phone) $contact[] = $row->guestCheckin->phone;
+                        return implode(' | ', $contact) ?: 'N/A';
+                    }
+                    if ($row->customer) {
+                        return $row->customer->email ?? $row->customer->mobile ?? 'N/A';
+                    }
+                    return 'N/A';
+                })
+                ->addColumn('guest_info', function ($row) {
+                    if ($row->guestCheckin) {
+                        return 'Guest Check-in | ' . $row->guestCheckin->gender . ' | ' . $row->guestCheckin->nationality;
+                    }
+                    if ($row->customer) {
+                        return 'Regular Customer';
+                    }
+                    return 'N/A';
+                })
+                ->addColumn('room_details', function ($row) {
+                    if ($row->room_number) {
+                        return 'Room ' . $row->room_number . ' - ' . $row->room_type;
+                    }
+                    return 'N/A';
+                })
+                ->editColumn('booking_start', function ($row) {
+                    return $this->commonUtil->format_date($row->booking_start, true);
+                })
+                ->editColumn('booking_end', function ($row) {
+                    return $this->commonUtil->format_date($row->booking_end, true);
+                })
+                ->addColumn('table', function ($row) {
+                    return $row->room_number ?? '--';
+                })
+                ->addColumn('location', function ($row) {
+                    return $row->location ? $row->location->name : '--';
+                })
+                ->addColumn('waiter', function ($row) {
+                    return $row->waiter ? $row->waiter->user_full_name : '--';
+                })
+                ->addColumn('price', function ($row) {
+                    return 'KES ' . number_format($row->price ?? 0, 2);
+                })
+                ->addColumn('status', function ($row) {
+                    return '<span class="label ' . $row->status_badge_class . '">' . ucfirst($row->booking_status) . '</span>';
+                })
+                ->addColumn('action', function ($row) {
+                    return '<button class="btn btn-xs btn-info btn-modal" data-href="' . route('bookings.show', $row->id) . '" data-container=".view_modal"><i class="fa fa-eye"></i></button>';
+                })
                 ->rawColumns(['status', 'action'])
                 ->make(true);
         }
@@ -399,8 +467,8 @@ class BookingController extends Controller
                 });
             }
 
-            return Datatables::of($query)
-                ->editColumn('full_name', function ($row) {
+            return DataTables::of($query)
+                ->addColumn('full_name', function ($row) {
                     return $row->surname . ' ' . $row->name;
                 })
                 ->editColumn('staff_acknowledged', function ($row) {
@@ -413,6 +481,11 @@ class BookingController extends Controller
                         '<span class="label label-success">Yes</span>' :
                         '<span class="label label-warning">No</span>';
                 })
+                ->addColumn('booking_status', function ($row) {
+                    $status = $row->booking_status ?? 'no_booking';
+                    $badgeClass = $row->status_badge_class ?? 'label-default';
+                    return '<span class="label ' . $badgeClass . '">' . ucfirst(str_replace('_', ' ', $status)) . '</span>';
+                })
                 ->editColumn('created_at', function ($row) {
                     return $row->created_at->format('Y-m-d H:i:s');
                 })
@@ -421,7 +494,7 @@ class BookingController extends Controller
                             <i class="fa fa-eye"></i> View
                         </button>';
                 })
-                ->rawColumns(['staff_acknowledged', 'guest_acknowledged', 'action'])
+                ->rawColumns(['staff_acknowledged', 'guest_acknowledged', 'booking_status', 'action'])
                 ->make(true);
         }
     }

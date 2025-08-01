@@ -128,7 +128,7 @@ class RestaurantUtil extends Util
      * @param array $filter
      * *For new orders order_status is 'received'
      *
-     * @return obj $orders
+     * @return \Illuminate\Database\Eloquent\Builder[]|\Illuminate\Database\Eloquent\Collection|\Illuminate\Database\Query\Builder[]|\Illuminate\Support\Collection|TransactionSellLine[] $orders
      */
     public function getLineOrders($business_id, $filter = [])
     {
@@ -171,7 +171,7 @@ class RestaurantUtil extends Util
             $query->where('transaction_sell_lines.id', $filter['line_id']);
         }
         
-        $orders =  $query->select(
+        return $query->select(
             'p.name as product_name',
             'p.type as product_type',
             'v.name as variation_name',
@@ -191,8 +191,6 @@ class RestaurantUtil extends Util
         )
                 ->orderBy('created_at', 'desc')
                 ->get();
-
-        return $orders;
     }
 
     /**

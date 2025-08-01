@@ -20,5 +20,6 @@ class OnlineBooking extends Model
         'total_price',
         'price_per_room',
         'is_double_occupancy',
+        'converted_booking_id'
     ];
 }
