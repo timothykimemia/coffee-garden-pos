@@ -10,7 +10,7 @@
     <!-- Main content -->
     <section class="content">
         <div class="row">
-            @if(count($business_locations) > 1)
+            @if(count($business_locations) >= 1)
                 <div class="col-sm-12">
                     <select id="business_location_id" class="select2" style="width:50%">
                         <option value="">@lang('purchase.business_location')</option>
@@ -146,10 +146,16 @@
                         <div class="external-event bg-red text-center" style="position: relative;">
                             <small>@lang('restaurant.cancelled')</small>
                         </div>
+                        <div class="external-event bg-purple text-center" style="position: relative;">
+                            <small><i class="fa fa-globe"></i> Online Booking</small>
+                        </div>
+                        <hr>
                         <small>
                             <p class="help-block">
                                 <i>@lang('restaurant.click_on_any_booking_to_view_or_change_status')<br><br>
-                                    @lang('restaurant.double_click_on_any_day_to_add_new_booking')</i>
+                                    @lang('restaurant.double_click_on_any_day_to_add_new_booking')<br><br>
+                                    <strong>Purple events</strong> are online bookings that can be converted to regular bookings.
+                                </i>
                             </p>
                         </small>
                     </div>
@@ -210,17 +216,51 @@
                         center: 'title',
                         right: 'month,agendaWeek,agendaDay,listWeek'
                     },
-                    eventLimit: 2,
-                    events: '/bookings',
+                    eventLimit: 3, // Increased limit to accommodate more bookings
+                    events: '/bookings-calendar',
                     eventRender: function(event, element) {
                         var title_html = event.customer_name || 'Unknown';
+
                         if (event.room_number) {
-                            title_html += '<br>Room: ' + event.room_number;
+                            title_html += '<br>' + event.room_number;
                         }
+
+                        // Add booking type indicator
+                        if (event.booking_type === 'online') {
+                            title_html += '<br><small><i class="fa fa-globe"></i> Online</small>';
+                        } else {
+                            title_html += '<br><small><i class="fa fa-user"></i> Front Desk</small>';
+                        }
+
+                        // Add price if available
+                        if (event.price) {
+                            title_html += '<br><small>' + event.price + '</small>';
+                        }
+
                         element.find('.fc-title').html(title_html);
-                        element.attr('data-href', event.url);
-                        element.attr('data-container', '.view_modal');
-                        element.addClass('btn-modal');
+
+                        // Set different attributes based on booking type
+                        if (event.booking_type === 'online') {
+                            element.attr('data-booking-type', 'online');
+                            element.attr('data-online-id', event.id.replace('online_', ''));
+                            element.addClass('online-booking-event');
+
+                            // Add tooltip for online bookings
+                            element.attr('title', 'Online Booking - Click to convert or view details');
+                        } else {
+                            element.attr('data-href', event.url);
+                            element.attr('data-container', '.view_modal');
+                            element.addClass('btn-modal');
+                        }
+                    },
+                    eventClick: function(event, jsEvent, view) {
+                        if (event.booking_type === 'online') {
+                            // Handle online booking click
+                            showOnlineBookingDetails(event);
+                        } else {
+                            // Handle regular booking click (existing functionality)
+                            // The btn-modal class will handle this
+                        }
                     },
                     dayClick: function(date, jsEvent, view) {
                         clickCount++;
@@ -235,7 +275,7 @@
                         }, 500);
                     },
                     eventSources: [{
-                        url: '/bookings',
+                        url: '/bookings-calendar',
                         data: function() {
                             return {
                                 location_id: $('#business_location_id').val()
@@ -667,6 +707,48 @@
                 $('select#booking_location_id').val('').trigger('change');
                 $('select#correspondent').val('').trigger('change');
                 $('#booking_note, #start_time, #end_time').val('');
+            }
+
+            function showOnlineBookingDetails(event) {
+                var onlineId = event.id.replace('online_', '');
+
+                var html = `
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                            <h4 class="modal-title">
+                                <i class="fa fa-globe"></i> Online Booking Details
+                            </h4>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h5><strong>Guest Information</strong></h5>
+                                    <p><strong>Name:</strong> ${event.customer_name}</p>
+                                    <p><strong>Email:</strong> ${event.email || 'N/A'}</p>
+                                    <p><strong>Phone:</strong> ${event.phone || 'N/A'}</p>
+                                    <p><strong>Gender:</strong> ${event.gender || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <h5><strong>Booking Details</strong></h5>
+                                    <p><strong>Check-in:</strong> ${moment(event.start).format('YYYY-MM-DD HH:mm')}</p>
+                                    <p><strong>Check-out:</strong> ${moment(event.end).format('YYYY-MM-DD HH:mm')}</p>
+                                    <p><strong>Room:</strong> ${event.room_number}</p>
+                                    <p><strong>Adults:</strong> ${event.adults || 1}</p>
+                                    <p><strong>Rooms:</strong> ${event.rooms || 1}</p>
+                                    <p><strong>Nights:</strong> ${event.nights || 'N/A'}</p>
+                                    <p><strong>Total Price:</strong> ${event.price || 'N/A'}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                        </div>
+                    </div>`;
+
+                $('.view_modal').html(html).modal('show');
             }
 
             // Create booking from guest check-in

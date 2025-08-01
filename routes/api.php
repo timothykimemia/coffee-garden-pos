@@ -23,6 +23,11 @@ Route::get('/guest-registrations/available-rooms', [GuestRegistrationController:
 Route::post('/bookings', [BookingController::class, 'store'])->middleware('auth:sanctum')->name('bookings.store');
 //Route::get('/bookings/guest-checkins', [BookingController::class, 'getGuestCheckins'])->middleware('auth:sanctum')->name('bookings.guest_checkins');
 
+// Add these INSIDE your authenticated middleware group
+Route::get('/bookings/guest-checkins', [BookingController::class, 'getGuestCheckins']);
+Route::get('/bookings/guest-checkins/{id}', [BookingController::class, 'showGuestCheckin']);
+Route::get('/bookings/get-todays-bookings', [BookingController::class, 'getTodaysBookings']);
+
 // ✅ Email sending – can stay public with rate limiting
 Route::post('/send-email', [GuestRegistrationController::class, 'sendEmail'])->middleware('throttle:60,1');
 

@@ -340,20 +340,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::get('/bookings/guest-checkins', [BookingController::class, 'getGuestCheckins'])->name('bookings.get_guest_checkins');
     Route::get('/bookings/guest-checkins/{id}', [BookingController::class, 'showGuestCheckin'])->name('bookings.show_guest_checkin');
+    Route::get('/bookings/get-todays-bookings', [BookingController::class, 'getTodaysBookings'])->name('get-todays-bookings');
     Route::get('/bookings/online-count', [BookingController::class, 'getOnlineBookingsCount'])->name('bookings.online_count');
     Route::post('/bookings/convert-online-booking/{id}', [BookingController::class, 'convertOnlineBookingToBooking'])->name('bookings.convert_online');
     Route::post('/bookings/process-online-bookings', [BookingController::class, 'processOnlineBookings'])->name('bookings.process_online');
 
-    Route::get('/bookings/get-todays-bookings', [BookingController::class, 'getTodaysBookings'])->name('get-todays-bookings');
-
-    Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
-    Route::get('/bookings/guest-checkins/{id}', [BookingController::class, 'showGuestCheckin'])->name('bookings.show_guest_checkin');
-
     // Guest Check-in routes
-    Route::post('/guest-checkins', 'GuestCheckinController@store')->name('guest-checkins.store');
-    Route::get('/guest-checkins/{id}', 'BookingController@showGuestCheckin')->name('guest-checkins.show');
-    Route::get('/bookings/guest-checkins', 'BookingController@getGuestCheckins')->name('bookings.guest-checkins');
-
     Route::post('/guest-checkins', [GuestCheckinController::class, 'store']);
 
     Route::prefix('guest-registrations')->group(function () {
@@ -403,22 +395,47 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone'])
     Route::get('/sells/invoice-url/{id}', 'SellPosController@showInvoiceUrl');
     Route::get('/show-notification/{id}', 'HomeController@showNotification');
 
-    // Calendar events endpoint (used by FullCalendar)
+    // Calendar events endpoint (used by FullCalendar) - Combined Bookings + Online Bookings
     Route::get('/bookings-calendar', function (\Illuminate\Http\Request $request) {
         $business_id = $request->session()->get('user.business_id', 1);
-        $bookings = \App\Restaurant\Booking::where('business_id', $business_id)
+        $events = [];
+
+        // Helper function to map room slug to room number
+        $getRoomNumberFromSlug = function($roomSlug) {
+            $roomMappings = [
+                'executive-rooms' => 210,
+                'deluxe-rooms' => 209,
+                'double-standard' => 101,
+                'single' => 105,
+            ];
+
+            // If direct mapping exists
+            if (isset($roomMappings[$roomSlug])) {
+                return $roomMappings[$roomSlug];
+            }
+
+            // Try to extract number from slug
+            if (preg_match('/(\d+)/', $roomSlug, $matches)) {
+                return (int)$matches[1];
+            }
+
+            return null;
+        };
+
+        // 1. Fetch regular bookings (done by receptionist)
+        $regularBookings = \App\Restaurant\Booking::where('business_id', $business_id)
             ->when($request->has('location_id') && $request->location_id, function ($q) use ($request) {
                 return $q->where('location_id', $request->location_id);
             })
             ->when($request->has('start') && $request->has('end'), function ($q) use ($request) {
                 return $q->whereBetween('booking_start', [$request->start, $request->end]);
             })
-            ->with(['customer', 'location'])
+            ->with(['customer', 'location', 'guestCheckin'])
             ->get();
 
-        $events = [];
-        foreach ($bookings as $booking) {
-            $color = '#f39c12'; // default yellow
+        // Process regular bookings
+        foreach ($regularBookings as $booking) {
+            $color = '#f39c12'; // default yellow/waiting
             switch ($booking->booking_status) {
                 case 'booked':
                     $color = '#3c8dbc'; // blue
@@ -430,17 +447,74 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone'])
                     $color = '#dd4b39'; // red
                     break;
             }
+
+            // Get customer name from different sources
+            $customerName = 'Guest';
+            if ($booking->guestCheckin) {
+                $customerName = $booking->guestCheckin->surname . ' ' . $booking->guestCheckin->name;
+            } elseif ($booking->customer) {
+                $customerName = $booking->customer->name;
+            }
+
             $events[] = [
-                'id' => $booking->id,
-                'title' => ($booking->customer ? $booking->customer->name : 'Guest') . ($booking->room_number ? ' - Room ' . $booking->room_number : ''),
+                'id' => 'booking_' . $booking->id,
+                'title' => $customerName . ($booking->room_number ? ' - Room ' . $booking->room_number : ''),
                 'start' => $booking->booking_start,
                 'end' => $booking->booking_end,
                 'color' => $color,
-                'customer_name' => $booking->customer ? $booking->customer->name : 'Guest',
+                'customer_name' => $customerName,
                 'room_number' => $booking->room_number ? 'Room ' . $booking->room_number : null,
                 'url' => route('bookings.show', $booking->id),
+                'booking_type' => 'regular',
+                'status' => $booking->booking_status,
+                'price' => $booking->price ? 'KES ' . number_format($booking->price, 2) : null,
             ];
         }
+
+        // 2. Fetch online bookings (done by tourists via web/mobile)
+        $onlineBookings = \App\OnlineBooking::when($request->has('start') && $request->has('end'), function ($q) use ($request) {
+            return $q->whereBetween('check_in', [$request->start, $request->end])
+                ->orWhereBetween('check_out', [$request->start, $request->end]);
+        })
+            ->whereNull('converted_booking_id') // Only show unconverted online bookings
+            ->get();
+
+        // Process online bookings
+        foreach ($onlineBookings as $onlineBooking) {
+            // Online bookings get a distinct color to differentiate them
+            $color = '#9b59b6'; // purple for online bookings
+
+            // Map room slug to room number for display
+            $roomNumber = $getRoomNumberFromSlug($onlineBooking->room_slug);
+            $roomDisplay = $roomNumber ? 'Room ' . $roomNumber : ucwords(str_replace('-', ' ', $onlineBooking->room_slug));
+
+            $events[] = [
+                'id' => 'online_' . $onlineBooking->id,
+                'title' => $onlineBooking->name . ' - ' . $roomDisplay . ' (Online)',
+                'start' => $onlineBooking->check_in,
+                'end' => $onlineBooking->check_out,
+                'color' => $color,
+                'customer_name' => $onlineBooking->name,
+                'room_number' => $roomDisplay,
+                'url' => '#', // No show URL for online bookings yet
+                'booking_type' => 'online',
+                'status' => 'online_pending',
+                'price' => $onlineBooking->total_price ? 'KES ' . number_format($onlineBooking->total_price, 2) : null,
+                'email' => $onlineBooking->email,
+                'phone' => $onlineBooking->phone_number,
+                'adults' => $onlineBooking->adults,
+                'rooms' => $onlineBooking->rooms,
+                'gender' => $onlineBooking->gender,
+                'nights' => $onlineBooking->number_of_days,
+                'convert_action' => true, // Flag to show convert button
+            ];
+        }
+
+        // 3. Sort events by start date
+        usort($events, function($a, $b) {
+            return strtotime($a['start']) - strtotime($b['start']);
+        });
+
         return response()->json($events);
     })->name('bookings.calendar');
 });
