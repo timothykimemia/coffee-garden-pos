@@ -11,6 +11,9 @@ use App\Models\GuestCheckin;
 
 class GuestCheckinController extends Controller
 {
+    protected $commonUtil;
+    protected $roomDefinitions;
+
     public function store(Request $request)
     {
         try {
